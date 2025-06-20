@@ -1,0 +1,1333 @@
+// ===== GOOGLE APPS SCRIPT - SISTEMA DE MAQUINARIAS PESADAS V2.0 MEJORADO =====
+
+// 🔗 IMPORTANTE: Reemplaza con el ID de tu Google Sheets
+const SPREADSHEET_ID = '1KjouB4B1NN8ibb1aokr2NQQfwryiiMI77g4E9U7Ln_I';
+
+function doGet(e) {
+  try {
+    const callback = e.parameter.callback;
+    const action = e.parameter.action;
+    const data = e.parameter.data ? JSON.parse(e.parameter.data) : {};
+    
+    console.log('📡 Acción recibida:', action);
+    console.log('📋 Datos recibidos:', data);
+    
+    let result;
+    
+    switch(action) {
+      case 'test':
+        result = { success: true, message: 'Conexión exitosa desde Google Apps Script V2.0 MEJORADO', timestamp: new Date() };
+        break;
+        
+      case 'login':
+        result = handleLogin(data);
+        break;
+        
+      case 'getDashboardData':
+        result = getDashboardData();
+        break;
+        
+      case 'getData':
+        result = getData(data.sheet);
+        break;
+        
+      case 'saveData':
+        result = saveData(data.sheet, data.data);
+        break;
+        
+      case 'getMaintenanceAlerts':
+        result = getMaintenanceAlerts();
+        break;
+        
+      // ===== NUEVAS FUNCIONES PARA GESTIÓN DE USUARIOS =====
+      case 'getUserPermissions':
+        result = getUserPermissions(data.usuario);
+        break;
+        
+      case 'getAllUsers':
+        result = getAllUsers();
+        break;
+        
+      case 'saveUser':
+        result = saveUser(data);
+        break;
+        
+      case 'deleteUser':
+        result = deleteUser(data.usuario);
+        break;
+        
+      // ===== NUEVAS FUNCIONES PARA VINCULACIÓN =====
+      case 'updateLinkedData':
+        result = updateLinkedData(data.sourceSheet, data.targetSheet, data.updates);
+        break;
+        
+      case 'getDropdownData':
+        result = getDropdownData(data.sheet);
+        break;
+        
+      // ===== NUEVAS FUNCIONES PARA FECHA ESPERADA =====
+      case 'calculateExpectedDate':
+        result = calculateExpectedDate(data.maquinaria);
+        break;
+        
+      case 'updateMaintenanceStatus':
+        result = updateMaintenanceStatus();
+        break;
+        
+      // ===== 🔧 CORRECCIÓN: NUEVA FUNCIÓN PARA ACTUALIZAR NOTAS =====
+      case 'updateNoteStatus':
+        result = updateNoteStatus(data);
+        break;
+        
+      default:
+        result = { success: false, message: 'Acción no reconocida: ' + action };
+    }
+    
+    console.log('📤 Enviando resultado:', result);
+    
+    const jsonpResponse = callback + '(' + JSON.stringify(result) + ');';
+    return ContentService.createTextOutput(jsonpResponse)
+                         .setMimeType(ContentService.MimeType.JAVASCRIPT);
+                         
+  } catch (error) {
+    console.error('❌ Error en doGet:', error);
+    const errorResult = { success: false, message: 'Error del servidor: ' + error.toString() };
+    const jsonpError = (e.parameter.callback || 'callback') + '(' + JSON.stringify(errorResult) + ');';
+    return ContentService.createTextOutput(jsonpError)
+                         .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+}
+
+function getSpreadsheet() {
+  try {
+    console.log('📊 Conectando con Spreadsheet ID:', SPREADSHEET_ID);
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  } catch (error) {
+    console.error('❌ Error abriendo spreadsheet:', error);
+    throw new Error('No se puede acceder a Google Sheets. Verifica el SPREADSHEET_ID: ' + error.toString());
+  }
+}
+
+// ===== GESTIÓN DE USUARIOS MEJORADA =====
+function handleLogin(data) {
+  try {
+    const { usuario, contraseña } = data;
+    
+    console.log('🔐 Intentando login para usuario:', usuario);
+    
+    const spreadsheet = getSpreadsheet();
+    let usuariosSheet = spreadsheet.getSheetByName('Usuarios');
+    
+    if (!usuariosSheet) {
+      console.log('❌ Hoja Usuarios no encontrada, creando...');
+      usuariosSheet = spreadsheet.insertSheet('Usuarios');
+      
+      // Crear headers mejorados
+      usuariosSheet.getRange(1, 1, 1, 15).setValues([
+        ['USUARIO', 'CONTRASEÑA', 'NOMBRE_COMPLETO', 'PERMISOS_GENERALES', 'ACTIVO', 
+         'PERM_PERSONAL', 'PERM_MAQUINARIAS', 'PERM_MANTENIMIENTOS', 'PERM_HOROMETROS', 
+         'PERM_PROGRAMACION', 'PERM_MOVIMIENTOS_MAQ', 'PERM_MOVIMIENTOS_PIEZAS', 
+         'PERM_ESTADOS_MAQ', 'PERM_PIEZAS_STANDBY', 'PERM_COMIDAS_NOTAS']
+      ]);
+      
+      // Crear usuario admin por defecto con todos los permisos
+      usuariosSheet.getRange(2, 1, 1, 15).setValues([
+        ['admin', 'admin123', 'Administrador del Sistema', 'completo', 'SI',
+         'completo', 'completo', 'completo', 'completo', 'completo',
+         'completo', 'completo', 'completo', 'completo', 'completo']
+      ]);
+      
+      // Formatear headers
+      const headerRange = usuariosSheet.getRange(1, 1, 1, 15);
+      headerRange.setFontWeight('bold');
+      headerRange.setBackground('#34495e');
+      headerRange.setFontColor('#ffffff');
+      
+      console.log('✅ Hoja Usuarios creada con permisos granulares');
+    }
+    
+    const usuarios = usuariosSheet.getDataRange().getValues();
+    
+    for (let i = 1; i < usuarios.length; i++) {
+      const fila = usuarios[i];
+      
+      const usuarioHoja = String(fila[0] || '').trim();
+      const contraseñaHoja = String(fila[1] || '').trim();
+      const nombreCompleto = String(fila[2] || '').trim();
+      const permisosGenerales = String(fila[3] || '').trim();
+      const activo = String(fila[4] || '').trim().toUpperCase();
+      
+      if (usuarioHoja === usuario && contraseñaHoja === contraseña && activo === 'SI') {
+        console.log('✅ Login exitoso para:', nombreCompleto);
+        
+        // Obtener permisos específicos por módulo
+        const permisos = {
+          generales: permisosGenerales || 'limitado',
+          personal: String(fila[5] || 'ninguno').trim(),
+          maquinarias: String(fila[6] || 'ninguno').trim(),
+          mantenimientos: String(fila[7] || 'ninguno').trim(),
+          horometros: String(fila[8] || 'ninguno').trim(),
+          programacion: String(fila[9] || 'ninguno').trim(),
+          movimientos_maq: String(fila[10] || 'ninguno').trim(),
+          movimientos_piezas: String(fila[11] || 'ninguno').trim(),
+          estados_maq: String(fila[12] || 'ninguno').trim(),
+          piezas_standby: String(fila[13] || 'ninguno').trim(),
+          comidas_notas: String(fila[14] || 'ninguno').trim()
+        };
+        
+        return {
+          success: true,
+          data: {
+            usuario: usuarioHoja,
+            nombre_completo: nombreCompleto || usuarioHoja,
+            permisos: permisos
+          }
+        };
+      }
+    }
+    
+    console.log('❌ Credenciales inválidas');
+    return { success: false, message: 'Usuario o contraseña incorrectos' };
+    
+  } catch (error) {
+    console.error('❌ Error en login:', error);
+    return { 
+      success: false, 
+      message: 'Error en autenticación: ' + error.toString() 
+    };
+  }
+}
+
+// ===== FUNCIÓN PARA OBTENER PERMISOS DE USUARIO =====
+function getUserPermissions(usuario) {
+  try {
+    const spreadsheet = getSpreadsheet();
+    const usuariosSheet = spreadsheet.getSheetByName('Usuarios');
+    
+    if (!usuariosSheet) {
+      return { success: false, message: 'Hoja de usuarios no encontrada' };
+    }
+    
+    const usuarios = usuariosSheet.getDataRange().getValues();
+    
+    for (let i = 1; i < usuarios.length; i++) {
+      const fila = usuarios[i];
+      if (String(fila[0] || '').trim() === usuario) {
+        return {
+          success: true,
+          data: {
+            personal: String(fila[5] || 'ninguno').trim(),
+            maquinarias: String(fila[6] || 'ninguno').trim(),
+            mantenimientos: String(fila[7] || 'ninguno').trim(),
+            horometros: String(fila[8] || 'ninguno').trim(),
+            programacion: String(fila[9] || 'ninguno').trim(),
+            movimientos_maq: String(fila[10] || 'ninguno').trim(),
+            movimientos_piezas: String(fila[11] || 'ninguno').trim(),
+            estados_maq: String(fila[12] || 'ninguno').trim(),
+            piezas_standby: String(fila[13] || 'ninguno').trim(),
+            comidas_notas: String(fila[14] || 'ninguno').trim()
+          }
+        };
+      }
+    }
+    
+    return { success: false, message: 'Usuario no encontrado' };
+    
+  } catch (error) {
+    return { success: false, message: 'Error obteniendo permisos: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIÓN PARA OBTENER TODOS LOS USUARIOS =====
+function getAllUsers() {
+  try {
+    const spreadsheet = getSpreadsheet();
+    const usuariosSheet = spreadsheet.getSheetByName('Usuarios');
+    
+    if (!usuariosSheet) {
+      return { success: false, message: 'Hoja de usuarios no encontrada' };
+    }
+    
+    const data = usuariosSheet.getDataRange().getValues();
+    return { success: true, data: data };
+    
+  } catch (error) {
+    return { success: false, message: 'Error obteniendo usuarios: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIÓN PARA GUARDAR USUARIO =====
+function saveUser(userData) {
+  try {
+    const spreadsheet = getSpreadsheet();
+    const usuariosSheet = spreadsheet.getSheetByName('Usuarios');
+    
+    if (!usuariosSheet) {
+      return { success: false, message: 'Hoja de usuarios no encontrada' };
+    }
+    
+    const data = usuariosSheet.getDataRange().getValues();
+    const userRow = [
+      userData.usuario,
+      userData.contraseña,
+      userData.nombre_completo,
+      userData.permisos_generales,
+      userData.activo,
+      userData.perm_personal || 'ninguno',
+      userData.perm_maquinarias || 'ninguno',
+      userData.perm_mantenimientos || 'ninguno',
+      userData.perm_horometros || 'ninguno',
+      userData.perm_programacion || 'ninguno',
+      userData.perm_movimientos_maq || 'ninguno',
+      userData.perm_movimientos_piezas || 'ninguno',
+      userData.perm_estados_maq || 'ninguno',
+      userData.perm_piezas_standby || 'ninguno',
+      userData.perm_comidas_notas || 'ninguno'
+    ];
+    
+    // Buscar si el usuario ya existe
+    let existingRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0] || '').trim() === userData.usuario) {
+        existingRow = i;
+        break;
+      }
+    }
+    
+    if (existingRow > -1) {
+      // Actualizar usuario existente
+      usuariosSheet.getRange(existingRow + 1, 1, 1, 15).setValues([userRow]);
+    } else {
+      // Agregar nuevo usuario
+      usuariosSheet.getRange(data.length + 1, 1, 1, 15).setValues([userRow]);
+    }
+    
+    return { success: true, message: 'Usuario guardado correctamente' };
+    
+  } catch (error) {
+    return { success: false, message: 'Error guardando usuario: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIÓN PARA ELIMINAR USUARIO =====
+function deleteUser(usuario) {
+  try {
+    const spreadsheet = getSpreadsheet();
+    const usuariosSheet = spreadsheet.getSheetByName('Usuarios');
+    
+    if (!usuariosSheet) {
+      return { success: false, message: 'Hoja de usuarios no encontrada' };
+    }
+    
+    const data = usuariosSheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0] || '').trim() === usuario) {
+        usuariosSheet.deleteRow(i + 1);
+        return { success: true, message: 'Usuario eliminado correctamente' };
+      }
+    }
+    
+    return { success: false, message: 'Usuario no encontrado' };
+    
+  } catch (error) {
+    return { success: false, message: 'Error eliminando usuario: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIONES DE VINCULACIÓN AUTOMÁTICA =====
+function updateLinkedData(sourceSheet, targetSheet, updates) {
+  try {
+    console.log('🔗 Actualizando vinculación:', sourceSheet, '->', targetSheet);
+    
+    const spreadsheet = getSpreadsheet();
+    const targetSheetObj = spreadsheet.getSheetByName(targetSheet);
+    
+    if (!targetSheetObj) {
+      return { success: false, message: 'Hoja destino no encontrada: ' + targetSheet };
+    }
+    
+    const data = targetSheetObj.getDataRange().getValues();
+    let updated = false;
+    
+    // Actualizar según el tipo de vinculación
+    switch (sourceSheet + '->' + targetSheet) {
+      case 'Horometros->Maquinarias':
+        updated = updateHorometroInMaquinarias(updates, data, targetSheetObj);
+        break;
+        
+      case 'Movimientos_Maquinarias->Maquinarias':
+        updated = updateUbicacionInMaquinarias(updates, data, targetSheetObj);
+        break;
+        
+      case 'Estados_Maquinas->Maquinarias':
+        updated = updateEstadoInMaquinarias(updates, data, targetSheetObj);
+        break;
+        
+      default:
+        console.log('Vinculación no configurada:', sourceSheet, '->', targetSheet);
+    }
+    
+    return { success: true, updated: updated };
+    
+  } catch (error) {
+    console.error('❌ Error actualizando vinculación:', error);
+    return { success: false, message: 'Error actualizando vinculación: ' + error.toString() };
+  }
+}
+
+function updateHorometroInMaquinarias(updates, data, targetSheet) {
+  try {
+    let updated = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      const maquinaria = String(data[i][0]).trim();
+      
+      if (updates[maquinaria]) {
+        const nuevoHorometro = updates[maquinaria].horometro_final;
+        targetSheet.getRange(i + 1, 7).setValue(nuevoHorometro); // Columna HOROMETRO_ACTUAL
+        updated = true;
+        
+        // Actualizar estado de mantenimiento para esta máquina
+        updateMaintenanceStatusForMachine(maquinaria, nuevoHorometro);
+      }
+    }
+    
+    return updated;
+  } catch (error) {
+    console.error('❌ Error actualizando horómetro:', error);
+    return false;
+  }
+}
+
+function updateUbicacionInMaquinarias(updates, data, targetSheet) {
+  try {
+    let updated = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      const maquinaria = String(data[i][0]).trim();
+      
+      if (updates[maquinaria]) {
+        const nuevaUbicacion = updates[maquinaria].nueva_ubicacion;
+        targetSheet.getRange(i + 1, 5).setValue(nuevaUbicacion); // Columna UBICACION_ACTUAL
+        updated = true;
+      }
+    }
+    
+    return updated;
+  } catch (error) {
+    console.error('❌ Error actualizando ubicación:', error);
+    return false;
+  }
+}
+
+function updateEstadoInMaquinarias(updates, data, targetSheet) {
+  try {
+    let updated = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      const maquinaria = String(data[i][0]).trim();
+      
+      if (updates[maquinaria]) {
+        const nuevoEstado = updates[maquinaria].estado;
+        targetSheet.getRange(i + 1, 6).setValue(nuevoEstado); // Columna ESTADO
+        updated = true;
+      }
+    }
+    
+    return updated;
+  } catch (error) {
+    console.error('❌ Error actualizando estado:', error);
+    return false;
+  }
+}
+
+// ===== FUNCIONES PARA DATOS DE LISTAS DESPLEGABLES =====
+function getDropdownData(sheetName) {
+  try {
+    const spreadsheet = getSpreadsheet();
+    let data = {};
+    
+    // Obtener datos de maquinarias
+    const maquinariasSheet = spreadsheet.getSheetByName('Maquinarias');
+    if (maquinariasSheet) {
+      const maquinariasData = maquinariasSheet.getDataRange().getValues();
+      data.maquinarias = [];
+      for (let i = 1; i < maquinariasData.length; i++) {
+        if (maquinariasData[i][0]) {
+          data.maquinarias.push(String(maquinariasData[i][0]).trim());
+        }
+      }
+    }
+    
+    // Obtener datos de personal
+    const personalSheet = spreadsheet.getSheetByName('Personal');
+    if (personalSheet) {
+      const personalData = personalSheet.getDataRange().getValues();
+      data.personal = [];
+      for (let i = 1; i < personalData.length; i++) {
+        if (personalData[i][0] && personalData[i][1]) {
+          const nombreCompleto = `${personalData[i][0]} ${personalData[i][1]}`.trim();
+          data.personal.push({
+            nombre_completo: nombreCompleto,
+            nombres: String(personalData[i][0]).trim(),
+            apellidos: String(personalData[i][1]).trim()
+          });
+        }
+      }
+    }
+    
+    // Tipos de mantenimiento
+    data.tipos_mantenimiento = ['PREVENTIVO', 'CORRECTIVO', 'PREDICTIVO'];
+    
+    // Estados de máquinas
+    data.estados_maquinas = ['OPERATIVO', 'INOPERATIVO', 'STANDBY'];
+    
+    // Estados de programación
+    data.estados_programacion = ['PENDIENTE', 'PROXIMO', 'URGENTE', 'REALIZADO'];
+    
+    return { success: true, data: data };
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo datos dropdown:', error);
+    return { success: false, message: 'Error obteniendo datos: ' + error.toString() };
+  }
+}
+
+// ===== SISTEMA DE CÁLCULO DE FECHA ESPERADA =====
+function calculateExpectedDate(maquinaria) {
+  try {
+    console.log('📅 Calculando fecha esperada para:', maquinaria);
+    
+    const spreadsheet = getSpreadsheet();
+    
+    // Obtener datos de la máquina
+    const maquinariasSheet = spreadsheet.getSheetByName('Maquinarias');
+    const programacionSheet = spreadsheet.getSheetByName('Programacion_Mantenimiento');
+    const horometrosSheet = spreadsheet.getSheetByName('Horometros');
+    
+    if (!maquinariasSheet || !programacionSheet || !horometrosSheet) {
+      return { success: false, message: 'Hojas requeridas no encontradas' };
+    }
+    
+    // Obtener horómetro actual
+    const maquinariasData = maquinariasSheet.getDataRange().getValues();
+    let horometroActual = 0;
+    
+    for (let i = 1; i < maquinariasData.length; i++) {
+      if (String(maquinariasData[i][0]).trim() === maquinaria) {
+        horometroActual = parseFloat(maquinariasData[i][6]) || 0;
+        break;
+      }
+    }
+    
+    // Obtener próximo horómetro programado
+    const programacionData = programacionSheet.getDataRange().getValues();
+    let proximoHorometro = 0;
+    let rowIndex = -1;
+    
+    for (let i = 1; i < programacionData.length; i++) {
+      if (String(programacionData[i][0]).trim() === maquinaria) {
+        proximoHorometro = parseFloat(programacionData[i][1]) || 0;
+        rowIndex = i;
+        break;
+      }
+    }
+    
+    if (proximoHorometro === 0) {
+      return { success: false, message: 'No se encontró programación para esta máquina' };
+    }
+    
+    // Calcular promedio diario de horas trabajadas
+    const promedioDiario = calculateDailyAverage(maquinaria, horometrosSheet);
+    
+    if (promedioDiario === 0) {
+      return { success: false, message: 'No hay suficientes datos históricos' };
+    }
+    
+    // Calcular horas faltantes
+    const horasFaltantes = proximoHorometro - horometroActual;
+    
+    // Calcular días laborables necesarios
+    const diasNecesarios = Math.ceil(horasFaltantes / promedioDiario);
+    
+    // Calcular fecha esperada (excluyendo domingos)
+    const fechaEsperada = calculateWorkingDate(new Date(), diasNecesarios);
+    
+    // Determinar estado
+    let estado = 'PENDIENTE';
+    if (horasFaltantes <= 0) {
+      estado = 'URGENTE';
+    } else if (horasFaltantes <= 30) {
+      estado = 'PROXIMO';
+    }
+    
+    // Actualizar la programación
+    if (rowIndex > -1) {
+      programacionSheet.getRange(rowIndex + 1, 4).setValue(estado); // Estado (columna D)
+      programacionSheet.getRange(rowIndex + 1, 5).setValue(fechaEsperada); // Fecha esperada (columna E)
+    }
+    
+    console.log('✅ Fecha esperada calculada:', fechaEsperada);
+    
+    return {
+      success: true,
+      data: {
+        maquinaria: maquinaria,
+        horometro_actual: horometroActual,
+        proximo_horometro: proximoHorometro,
+        horas_faltantes: horasFaltantes,
+        promedio_diario: promedioDiario,
+        dias_necesarios: diasNecesarios,
+        fecha_esperada: fechaEsperada,
+        estado: estado
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Error calculando fecha esperada:', error);
+    return { success: false, message: 'Error en cálculo: ' + error.toString() };
+  }
+}
+
+function calculateDailyAverage(maquinaria, horometrosSheet) {
+  try {
+    const horometrosData = horometrosSheet.getDataRange().getValues();
+    const registros = [];
+    
+    // Filtrar registros de la máquina específica
+    for (let i = 1; i < horometrosData.length; i++) {
+      if (String(horometrosData[i][0]).trim() === maquinaria) {
+        const fecha = horometrosData[i][3];
+        const horometroInicial = parseFloat(horometrosData[i][1]) || 0;
+        const horometroFinal = parseFloat(horometrosData[i][2]) || 0;
+        const horasTrabajadas = horometroFinal - horometroInicial;
+        
+        if (horasTrabajadas > 0 && fecha) {
+          registros.push({
+            fecha: new Date(fecha),
+            horas: horasTrabajadas
+          });
+        }
+      }
+    }
+    
+    if (registros.length < 2) {
+      return 8; // Valor por defecto si no hay suficientes datos
+    }
+    
+    // Ordenar por fecha
+    registros.sort((a, b) => a.fecha - b.fecha);
+    
+    // Calcular promedio de los últimos 30 días o todos los registros disponibles
+    const registrosRecientes = registros.slice(-30);
+    const totalHoras = registrosRecientes.reduce((sum, reg) => sum + reg.horas, 0);
+    
+    return totalHoras / registrosRecientes.length;
+    
+  } catch (error) {
+    console.error('❌ Error calculando promedio diario:', error);
+    return 8; // Valor por defecto
+  }
+}
+
+function calculateWorkingDate(startDate, workingDays) {
+  const date = new Date(startDate);
+  let daysAdded = 0;
+  
+  while (daysAdded < workingDays) {
+    date.setDate(date.getDate() + 1);
+    
+    // Si no es domingo (0), contar el día
+    if (date.getDay() !== 0) {
+      daysAdded++;
+    }
+  }
+  
+  return date;
+}
+
+// ===== 🔧 CORRECCIÓN CRÍTICA: ACTUALIZACIÓN AUTOMÁTICA DE ESTADOS DE MANTENIMIENTO =====
+function updateMaintenanceStatus() {
+  try {
+    console.log('🔄 Actualizando estados de mantenimiento...');
+    
+    const spreadsheet = getSpreadsheet();
+    const programacionSheet = spreadsheet.getSheetByName('Programacion_Mantenimiento');
+    const maquinariasSheet = spreadsheet.getSheetByName('Maquinarias');
+    
+    if (!programacionSheet || !maquinariasSheet) {
+      return { success: false, message: 'Hojas requeridas no encontradas' };
+    }
+    
+    const programacionData = programacionSheet.getDataRange().getValues();
+    const maquinariasData = maquinariasSheet.getDataRange().getValues();
+    const headers = programacionData[0];
+    
+    // Encontrar índices de columnas
+    const estadoIndex = headers.findIndex(h => h === 'ESTADO');
+    const maquinariaIndex = headers.findIndex(h => h === 'MAQUINARIA');
+    const proximoHorometroIndex = headers.findIndex(h => h === 'PROXIMO_HOROMETRO');
+    
+    if (estadoIndex === -1 || maquinariaIndex === -1 || proximoHorometroIndex === -1) {
+      return { success: false, message: 'Columnas requeridas no encontradas' };
+    }
+    
+    let alertasProximos = 0;
+    let alertasVencidos = 0;
+    let actualizaciones = 0;
+    
+    // Crear mapa de horómetros actuales
+    const horometrosActuales = {};
+    for (let i = 1; i < maquinariasData.length; i++) {
+      const nombreMaquina = String(maquinariasData[i][0]).trim();
+      const horometro = parseFloat(maquinariasData[i][6]) || 0;
+      horometrosActuales[nombreMaquina] = horometro;
+    }
+    
+    // Actualizar cada programación
+    for (let i = 1; i < programacionData.length; i++) {
+      const maquinaria = String(programacionData[i][maquinariaIndex]).trim();
+      const proximoHorometro = parseFloat(programacionData[i][proximoHorometroIndex]) || 0;
+      const estadoActual = String(programacionData[i][estadoIndex] || '').trim().toUpperCase();
+      
+      // Saltar si ya está marcado como realizado
+      if (estadoActual === 'REALIZADO') {
+        continue;
+      }
+      
+      const horometroActual = horometrosActuales[maquinaria] || 0;
+      const horasFaltantes = proximoHorometro - horometroActual;
+      
+      let nuevoEstado = 'PENDIENTE';
+      
+      if (horasFaltantes <= 0) {
+        nuevoEstado = 'URGENTE';
+        alertasVencidos++;
+      } else if (horasFaltantes <= 30) {
+        nuevoEstado = 'PROXIMO';
+        alertasProximos++;
+      }
+      
+      // 🔧 CORRECCIÓN CRÍTICA: Solo actualizar ESTADO, sin tocar otras columnas
+      if (nuevoEstado !== estadoActual) {
+        // Solo actualizar la columna ESTADO (índice estadoIndex + 1)
+        programacionSheet.getRange(i + 1, estadoIndex + 1).setValue(nuevoEstado);
+        actualizaciones++;
+        console.log(`✅ Actualizado ${maquinaria}: ${estadoActual} → ${nuevoEstado}`);
+        
+        // Recalcular fecha esperada sin tocar columnas incorrectas
+        calculateExpectedDate(maquinaria);
+      }
+    }
+    
+    console.log('✅ Estados actualizados:', actualizaciones);
+    
+    return {
+      success: true,
+      data: {
+        actualizaciones: actualizaciones,
+        alertas_proximos: alertasProximos,
+        alertas_vencidos: alertasVencidos
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Error actualizando estados:', error);
+    return { success: false, message: 'Error actualizando estados: ' + error.toString() };
+  }
+}
+
+function updateMaintenanceStatusForMachine(maquinaria, nuevoHorometro) {
+  try {
+    const spreadsheet = getSpreadsheet();
+    const programacionSheet = spreadsheet.getSheetByName('Programacion_Mantenimiento');
+    
+    if (!programacionSheet) return;
+    
+    const programacionData = programacionSheet.getDataRange().getValues();
+    const headers = programacionData[0];
+    
+    // Encontrar índices de columnas
+    const estadoIndex = headers.findIndex(h => h === 'ESTADO');
+    const maquinariaIndex = headers.findIndex(h => h === 'MAQUINARIA');
+    const proximoHorometroIndex = headers.findIndex(h => h === 'PROXIMO_HOROMETRO');
+    
+    for (let i = 1; i < programacionData.length; i++) {
+      const nombreMaquina = String(programacionData[i][maquinariaIndex]).trim();
+      
+      if (nombreMaquina === maquinaria) {
+        const proximoHorometro = parseFloat(programacionData[i][proximoHorometroIndex]) || 0;
+        const estadoActual = String(programacionData[i][estadoIndex] || '').trim().toUpperCase();
+        
+        if (estadoActual === 'REALIZADO') continue;
+        
+        const horasFaltantes = proximoHorometro - nuevoHorometro;
+        let nuevoEstado = 'PENDIENTE';
+        
+        if (horasFaltantes <= 0) {
+          nuevoEstado = 'URGENTE';
+        } else if (horasFaltantes <= 30) {
+          nuevoEstado = 'PROXIMO';
+        }
+        
+        // 🔧 CORRECCIÓN CRÍTICA: Solo actualizar columna ESTADO
+        if (nuevoEstado !== estadoActual) {
+          programacionSheet.getRange(i + 1, estadoIndex + 1).setValue(nuevoEstado);
+          console.log(`✅ Máquina actualizada ${maquinaria}: ${estadoActual} → ${nuevoEstado}`);
+          // Recalcular fecha esperada
+          calculateExpectedDate(maquinaria);
+        }
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error actualizando estado de máquina:', error);
+  }
+}
+
+// ===== 🔧 CORRECCIÓN: NUEVA FUNCIÓN PARA ACTUALIZAR ESTADO DE NOTAS =====
+function updateNoteStatus(data) {
+  try {
+    const { updates } = data;
+    
+    console.log('🔄 Actualizando estado de nota:', updates);
+    
+    const spreadsheet = getSpreadsheet();
+    const notasSheet = spreadsheet.getSheetByName('Notas');
+    
+    if (!notasSheet) {
+      return { success: false, message: 'Hoja Notas no encontrada' };
+    }
+    
+    const sheetData = notasSheet.getDataRange().getValues();
+    const headers = sheetData[0];
+    
+    let updatedRows = 0;
+    
+    for (const update of updates) {
+      const { searchField, searchValue, updateField, updateValue } = update;
+      
+      const searchIndex = headers.findIndex(h => h === searchField);
+      const updateIndex = headers.findIndex(h => h === updateField);
+      
+      if (searchIndex === -1 || updateIndex === -1) {
+        console.error('❌ Columnas no encontradas:', searchField, updateField);
+        continue;
+      }
+      
+      // Buscar la fila que coincida
+      for (let i = 1; i < sheetData.length; i++) {
+        if (String(sheetData[i][searchIndex]) === String(searchValue)) {
+          // Actualizar el valor
+          notasSheet.getRange(i + 1, updateIndex + 1).setValue(updateValue);
+          console.log(`✅ Nota actualizada: ${searchField}=${searchValue} → ${updateField}=${updateValue}`);
+          updatedRows++;
+          break; // Solo actualizar la primera coincidencia
+        }
+      }
+    }
+    
+    return { 
+      success: true, 
+      message: `${updatedRows} nota(s) actualizada(s)`,
+      updated: updatedRows 
+    };
+    
+  } catch (error) {
+    console.error('❌ Error actualizando estado de nota:', error);
+    return { success: false, message: 'Error: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIONES EXISTENTES MEJORADAS =====
+function getData(sheetName) {
+  try {
+    console.log('📊 Obteniendo datos de la hoja:', sheetName);
+    
+    const spreadsheet = getSpreadsheet();
+    let sheet = spreadsheet.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      console.log('⚠️ Hoja no encontrada, creando:', sheetName);
+      sheet = createSheetWithHeaders(spreadsheet, sheetName);
+    }
+    
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    
+    if (lastRow === 0 || lastCol === 0) {
+      console.log('📋 Hoja vacía');
+      const headers = getHeadersForSheet(sheetName);
+      return { success: true, data: [headers] };
+    }
+    
+    const range = sheet.getRange(1, 1, lastRow, lastCol);
+    const values = range.getValues();
+    
+    const processedValues = values.map(row => 
+      row.map(cell => {
+        if (cell instanceof Date) {
+          return cell.toISOString();
+        }
+        return cell !== null && cell !== undefined ? String(cell) : '';
+      })
+    );
+    
+    console.log('📥 Datos obtenidos:', processedValues.length, 'filas');
+    
+    return { success: true, data: processedValues };
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo datos:', error);
+    return { 
+      success: false, 
+      message: 'Error obteniendo datos: ' + error.toString() 
+    };
+  }
+}
+
+function saveData(sheetName, data) {
+  try {
+    console.log('💾 Guardando datos en la hoja:', sheetName);
+    
+    const spreadsheet = getSpreadsheet();
+    let sheet = spreadsheet.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      console.log('⚠️ Hoja no encontrada, creando:', sheetName);
+      sheet = createSheetWithHeaders(spreadsheet, sheetName);
+    }
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return { success: false, message: 'Datos inválidos para guardar' };
+    }
+    
+    // Limpiar hoja existente
+    sheet.clear();
+    
+    // Escribir nuevos datos
+    const numRows = data.length;
+    const numCols = Math.max(...data.map(row => row.length));
+    
+    if (numRows > 0 && numCols > 0) {
+      // Asegurar que todas las filas tengan el mismo número de columnas
+      const normalizedData = data.map(row => {
+        const normalizedRow = Array(numCols).fill('');
+        row.forEach((cell, index) => {
+          if (index < numCols) {
+            normalizedRow[index] = cell !== null && cell !== undefined ? String(cell) : '';
+          }
+        });
+        return normalizedRow;
+      });
+      
+      sheet.getRange(1, 1, numRows, numCols).setValues(normalizedData);
+      
+      // Formatear headers si es la primera fila
+      if (numRows > 0) {
+        const headerRange = sheet.getRange(1, 1, 1, numCols);
+        headerRange.setFontWeight('bold');
+        headerRange.setBackground('#34495e');
+        headerRange.setFontColor('#ffffff');
+      }
+      
+      // Auto-redimensionar columnas
+      sheet.autoResizeColumns(1, numCols);
+    }
+    
+    console.log('💾 Datos guardados exitosamente');
+    
+    // Procesar vinculaciones automáticas
+    processAutoLinking(sheetName, data);
+    
+    return { success: true, message: 'Datos guardados correctamente' };
+    
+  } catch (error) {
+    console.error('❌ Error guardando datos:', error);
+    return { 
+      success: false, 
+      message: 'Error guardando datos: ' + error.toString() 
+    };
+  }
+}
+
+function processAutoLinking(sheetName, data) {
+  try {
+    console.log('🔗 Procesando vinculaciones automáticas para:', sheetName);
+    
+    // Definir vinculaciones
+    const linkingConfig = {
+      'Horometros': {
+        target: 'Maquinarias',
+        updates: {}
+      },
+      'Movimientos_Maquinarias': {
+        target: 'Maquinarias',
+        updates: {}
+      },
+      'Estados_Maquinas': {
+        target: 'Maquinarias',
+        updates: {}
+      }
+    };
+    
+    if (!linkingConfig[sheetName]) {
+      return; // No hay vinculación configurada
+    }
+    
+    const config = linkingConfig[sheetName];
+    
+    // Procesar actualizaciones según el tipo de hoja
+    switch (sheetName) {
+      case 'Horometros':
+        // Obtener el último horómetro final por máquina
+        for (let i = 1; i < data.length; i++) {
+          const maquinaria = String(data[i][0]).trim();
+          const horometroFinal = parseFloat(data[i][2]) || 0;
+          
+          if (maquinaria && horometroFinal > 0) {
+            if (!config.updates[maquinaria] || config.updates[maquinaria].horometro_final < horometroFinal) {
+              config.updates[maquinaria] = { horometro_final: horometroFinal };
+            }
+          }
+        }
+        break;
+        
+      case 'Movimientos_Maquinarias':
+        // Obtener la última ubicación por máquina
+        for (let i = 1; i < data.length; i++) {
+          const maquinaria = String(data[i][0]).trim();
+          const nuevaUbicacion = String(data[i][2]).trim();
+          
+          if (maquinaria && nuevaUbicacion) {
+            config.updates[maquinaria] = { nueva_ubicacion: nuevaUbicacion };
+          }
+        }
+        break;
+        
+      case 'Estados_Maquinas':
+        // Obtener el último estado por máquina
+        for (let i = 1; i < data.length; i++) {
+          const maquinaria = String(data[i][0]).trim();
+          const estado = String(data[i][1]).trim();
+          
+          if (maquinaria && estado) {
+            config.updates[maquinaria] = { estado: estado };
+          }
+        }
+        break;
+    }
+    
+    // Ejecutar actualizaciones
+    if (Object.keys(config.updates).length > 0) {
+      updateLinkedData(sheetName, config.target, config.updates);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error procesando vinculaciones:', error);
+  }
+}
+
+function createSheetWithHeaders(spreadsheet, sheetName) {
+  const sheet = spreadsheet.insertSheet(sheetName);
+  const headers = getHeadersForSheet(sheetName);
+  
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#34495e');
+  headerRange.setFontColor('#ffffff');
+  sheet.autoResizeColumns(1, headers.length);
+  
+  console.log('✅ Hoja creada:', sheetName);
+  return sheet;
+}
+
+function getHeadersForSheet(sheetName) {
+  const headersMap = {
+    'Usuarios': [
+      'USUARIO', 'CONTRASEÑA', 'NOMBRE_COMPLETO', 'PERMISOS_GENERALES', 'ACTIVO',
+      'PERM_PERSONAL', 'PERM_MAQUINARIAS', 'PERM_MANTENIMIENTOS', 'PERM_HOROMETROS',
+      'PERM_PROGRAMACION', 'PERM_MOVIMIENTOS_MAQ', 'PERM_MOVIMIENTOS_PIEZAS',
+      'PERM_ESTADOS_MAQ', 'PERM_PIEZAS_STANDBY', 'PERM_COMIDAS_NOTAS'
+    ],
+    'Personal': [
+      'NOMBRES', 'APELLIDOS', 'DNI', 'CARGO', 'TELEFONO', 'EMAIL', 
+      'FECHA_INGRESO', 'ESTADO', 'OBSERVACIONES'
+    ],
+    'Maquinarias': [
+      'NOMBRE', 'MARCA', 'MODELO', 'AÑO_FABRICACION', 'UBICACION_ACTUAL', 
+      'ESTADO', 'HOROMETRO_ACTUAL', 'OBSERVACIONES'
+    ],
+    'mantenimientos': [
+      'N_INFORME', 'MAQUINARIA', 'PERSONAL_ASIGNADO', 'TRABAJO_REALIZADO', 
+      'OBSERVACIONES', 'FECHA', 'HORA_INICIO', 'HORA_TERMINO', 'HOROMETRO'
+    ],
+    'Horometros': [
+      'MAQUINARIA', 'HOROMETRO_INICIAL', 'HOROMETRO_FINAL', 'FECHA', 
+      'OPERADOR', 'UBICACION', 'OBSERVACIONES'
+    ],
+    'Programacion_Mantenimiento': [
+      'MAQUINARIA', 'PROXIMO_HOROMETRO', 'TRABAJOS_A_REALIZAR', 
+      'ESTADO', 'FECHA_ESPERADA', 'OBSERVACIONES'
+    ],
+    'Movimientos_Maquinarias': [
+      'MAQUINARIA', 'UBICACION_ACTUAL', 'NUEVA_UBICACION', 'QUIEN_AUTORIZO', 
+      'MOTIVO', 'FECHA', 'HORA', 'OBSERVACIONES'
+    ],
+    'Movimientos_Piezas': [
+      'FECHA', 'HORA', 'TIPO_MOVIMIENTO', 'PIEZA_REPUESTO', 'MAQUINA_ORIGEN', 
+      'MAQUINA_DESTINO', 'ESTADO', 'OBSERVACIONES'
+    ],
+    'Estados_Maquinas': [
+      'MAQUINARIA', 'ESTADO', 'FECHA', 'FALLAS', 'PIEZAS_FALTANTES', 'OBSERVACIONES'
+    ],
+    'Piezas_Standby': [
+      'PIEZA_REPUESTO', 'MARCA', 'MODELO', 'CANTIDAD', 'ESTADO', 'OBSERVACIONES'
+    ],
+    'Comidas': [
+      'COMIDA', 'PERSONAL', 'FECHA', 'TIPO_COMIDA', 'CANTIDAD_PERSONAS', 'OBSERVACIONES'
+    ],
+    'Notas': [
+      'PERSONAL', 'NOTAS', 'FECHA_CREACION', 'FECHA_RECORDATORIO', 'PRIORIDAD', 'ESTADO'
+    ]
+  };
+  
+  return headersMap[sheetName] || ['COLUMNA_1', 'COLUMNA_2', 'COLUMNA_3'];
+}
+
+function getDashboardData() {
+  try {
+    console.log('📊 Obteniendo datos del dashboard');
+    
+    const maquinariasStats = getMaquinariaStatsFromSheet();
+    const mantenimientosStats = getMantenimientosPorMes();
+    const alertasStats = updateMaintenanceStatus();
+    
+    const dashboardData = {
+      operativas: maquinariasStats.operativas,
+      inoperativas: maquinariasStats.inoperativas,
+      standby: maquinariasStats.standby,
+      total: maquinariasStats.total,
+      porcentaje_operativas: maquinariasStats.porcentaje_operativas,
+      porcentaje_inoperativas: maquinariasStats.porcentaje_inoperativas,
+      porcentaje_standby: maquinariasStats.porcentaje_standby,
+      mantenimientos_por_mes: mantenimientosStats.datos_mensuales,
+      labels_meses: mantenimientosStats.labels_meses,
+      alertas_proximos: alertasStats.success ? alertasStats.data.alertas_proximos : 0,
+      alertas_vencidos: alertasStats.success ? alertasStats.data.alertas_vencidos : 0
+    };
+    
+    return { success: true, data: dashboardData };
+    
+  } catch (error) {
+    console.error('❌ Error en dashboard:', error);
+    return { 
+      success: false, 
+      message: 'Error obteniendo dashboard: ' + error.toString() 
+    };
+  }
+}
+
+function getMaquinariaStatsFromSheet() {
+  try {
+    const spreadsheet = getSpreadsheet();
+    let sheet = spreadsheet.getSheetByName('Maquinarias');
+    
+    if (!sheet) {
+      return { operativas: 0, inoperativas: 0, standby: 0, total: 0, porcentaje_operativas: 0, porcentaje_inoperativas: 0, porcentaje_standby: 0 };
+    }
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { operativas: 0, inoperativas: 0, standby: 0, total: 0, porcentaje_operativas: 0, porcentaje_inoperativas: 0, porcentaje_standby: 0 };
+    }
+    
+    const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    
+    let operativas = 0;
+    let inoperativas = 0;
+    let standby = 0;
+    
+    data.forEach(row => {
+      const estado = String(row[5] || '').toUpperCase().trim();
+      
+      if (estado === 'OPERATIVO') {
+        operativas++;
+      } else if (estado === 'INOPERATIVO') {
+        inoperativas++;
+      } else if (estado === 'STANDBY') {
+        standby++;
+      }
+    });
+    
+    const total = operativas + inoperativas + standby;
+    const porcentaje_operativas = total > 0 ? Math.round((operativas / total) * 100) : 0;
+    const porcentaje_inoperativas = total > 0 ? Math.round((inoperativas / total) * 100) : 0;
+    const porcentaje_standby = total > 0 ? Math.round((standby / total) * 100) : 0;
+    
+    return { operativas, inoperativas, standby, total, porcentaje_operativas, porcentaje_inoperativas, porcentaje_standby };
+    
+  } catch (error) {
+    return { operativas: 0, inoperativas: 0, standby: 0, total: 0, porcentaje_operativas: 0, porcentaje_inoperativas: 0, porcentaje_standby: 0 };
+  }
+}
+
+function getMantenimientosPorMes() {
+  try {
+    const spreadsheet = getSpreadsheet();
+    let sheet = spreadsheet.getSheetByName('mantenimientos');
+    
+    if (!sheet) {
+      return { datos_mensuales: [0, 0, 0, 0, 0, 0], labels_meses: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'] };
+    }
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { datos_mensuales: [0, 0, 0, 0, 0, 0], labels_meses: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'] };
+    }
+    
+    const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const mantenimientosPorMes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const mesesLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    
+    data.forEach(row => {
+      const fecha = row[5]; // Columna de fecha (ajustada por eliminación de TIPO_MANTENIMIENTO)
+      if (fecha instanceof Date) {
+        const mes = fecha.getMonth();
+        mantenimientosPorMes[mes]++;
+      }
+    });
+    
+    return { 
+      datos_mensuales: mantenimientosPorMes, 
+      labels_meses: mesesLabels 
+    };
+    
+  } catch (error) {
+    return { datos_mensuales: [0, 0, 0, 0, 0, 0], labels_meses: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'] };
+  }
+}
+
+function getMaintenanceAlerts() {
+  try {
+    console.log('🚨 Obteniendo alertas de mantenimiento');
+    
+    const spreadsheet = getSpreadsheet();
+    const programacionSheet = spreadsheet.getSheetByName('Programacion_Mantenimiento');
+    const maquinariasSheet = spreadsheet.getSheetByName('Maquinarias');
+    
+    if (!programacionSheet || !maquinariasSheet) {
+      return { success: true, data: [] };
+    }
+    
+    // Actualizar estados primero
+    updateMaintenanceStatus();
+    
+    const programacionData = programacionSheet.getDataRange().getValues();
+    const maquinariasData = maquinariasSheet.getDataRange().getValues();
+    
+    // Crear mapa de horómetros actuales
+    const horometrosActuales = {};
+    for (let i = 1; i < maquinariasData.length; i++) {
+      const nombreMaquina = String(maquinariasData[i][0]).trim();
+      const horometro = parseFloat(maquinariasData[i][6]) || 0;
+      horometrosActuales[nombreMaquina] = horometro;
+    }
+    
+    const alertas = [];
+    
+    for (let i = 1; i < programacionData.length; i++) {
+      const maquinaria = String(programacionData[i][0]).trim();
+      const proximoHorometro = parseFloat(programacionData[i][1]) || 0;
+      const trabajos = String(programacionData[i][2]).trim();
+      const estado = String(programacionData[i][3]).trim().toUpperCase();
+      const fechaEsperada = programacionData[i][4];
+      
+      if (estado === 'REALIZADO') continue;
+      
+      const horometroActual = horometrosActuales[maquinaria] || 0;
+      const horasFaltantes = proximoHorometro - horometroActual;
+      
+      if (estado === 'PROXIMO' || estado === 'URGENTE') {
+        alertas.push({
+          maquinaria: maquinaria,
+          proximo_horometro: proximoHorometro,
+          horometro_actual: horometroActual,
+          horas_faltantes: Math.max(0, parseFloat(horasFaltantes.toFixed(2))),
+          trabajos: trabajos,
+          estado: estado,
+          fecha_esperada: fechaEsperada,
+          urgencia: estado === 'URGENTE' ? 'alta' : 'media'
+        });
+      }
+    }
+    
+    console.log('✅ Alertas obtenidas:', alertas.length);
+    return { success: true, data: alertas };
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo alertas:', error);
+    return { success: false, message: 'Error obteniendo alertas: ' + error.toString() };
+  }
+}
+
+// ===== FUNCIONES DE TRIGGER AUTOMÁTICO (OPCIONAL) =====
+function onEditTrigger(e) {
+  try {
+    const sheet = e.source.getActiveSheet();
+    const sheetName = sheet.getName();
+    const range = e.range;
+    
+    // Solo procesar cambios en hojas específicas
+    if (['Horometros', 'Movimientos_Maquinarias', 'Estados_Maquinas'].includes(sheetName)) {
+      console.log('🔄 Trigger activado en:', sheetName);
+      
+      // Esperar un poco para que se complete la edición
+      Utilities.sleep(1000);
+      
+      // Actualizar estados de mantenimiento
+      updateMaintenanceStatus();
+    }
+    
+  } catch (error) {
+    console.error('❌ Error en trigger:', error);
+  }
+}
+
+// ===== FUNCIÓN DE INICIALIZACIÓN =====
+function initializeSystem() {
+  try {
+    console.log('🚀 Inicializando sistema...');
+    
+    const spreadsheet = getSpreadsheet();
+    
+    // Crear todas las hojas si no existen
+    const requiredSheets = [
+      'Usuarios', 'Personal', 'Maquinarias', 'mantenimientos', 'Horometros',
+      'Programacion_Mantenimiento', 'Movimientos_Maquinarias', 'Movimientos_Piezas',
+      'Estados_Maquinas', 'Piezas_Standby', 'Comidas', 'Notas'
+    ];
+    
+    requiredSheets.forEach(sheetName => {
+      let sheet = spreadsheet.getSheetByName(sheetName);
+      if (!sheet) {
+        createSheetWithHeaders(spreadsheet, sheetName);
+      }
+    });
+    
+    // Actualizar estados de mantenimiento
+    updateMaintenanceStatus();
+    
+    console.log('✅ Sistema inicializado correctamente');
+    return { success: true, message: 'Sistema inicializado correctamente' };
+    
+  } catch (error) {
+    console.error('❌ Error inicializando sistema:', error);
+    return { success: false, message: 'Error inicializando sistema: ' + error.toString() };
+  }
+}
+
+console.log('✅ Google Apps Script V2.0 MEJORADO cargado completamente');
